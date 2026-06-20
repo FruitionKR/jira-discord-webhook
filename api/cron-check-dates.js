@@ -1,12 +1,12 @@
 import { sendDiscordEmbed, COLOR } from '../lib/discord.js';
 
-// vercel.json에서 매일 UTC 00:00 (KST 09:00) 자동 실행
+// vercel.json에서 매일 UTC 15:00 (KST 00:00) 자동 실행
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = getKstDateString();
 
   try {
     const [startIssues, dueIssues] = await Promise.all([
@@ -26,6 +26,11 @@ export default async function handler(req, res) {
     console.error(err);
     return res.status(500).json({ error: err.message });
   }
+}
+
+function getKstDateString(date = new Date()) {
+  const kstOffsetMs = 9 * 60 * 60 * 1000;
+  return new Date(date.getTime() + kstOffsetMs).toISOString().slice(0, 10);
 }
 
 async function queryJira(jql) {
