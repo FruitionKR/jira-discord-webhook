@@ -13,34 +13,81 @@ const LABEL = {
 };
 
 export default async function handler(req, res) {
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      ok: true,
+      route: '/api/jira-webhook',
+      hasDiscordWebhook: Boolean(process.env.DISCORD_WEBHOOK_URL),
+      hasJiraBaseUrl: Boolean(process.env.JIRA_BASE_URL),
+      requiresSecret: Boolean(process.env.JIRA_WEBHOOK_SECRET),
+    });
+  }
+
   if (req.method !== 'POST') {
+    console.warn('[jira-webhook] unsupported method', { method: req.method });
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const secret = process.env.JIRA_WEBHOOK_SECRET;
   if (secret) {
     const auth = req.headers['x-jira-webhook-secret'] ?? req.headers['authorization'];
-    if (auth !== secret && auth !== `Bearer ${secret}`) {
+    const querySecret = req.query?.secret;
+    if (auth !== secret && auth !== `Bearer ${secret}` && querySecret !== secret) {
+      console.warn('[jira-webhook] unauthorized request', {
+        hasAuthorization: Boolean(req.headers['authorization']),
+        hasJiraSecretHeader: Boolean(req.headers['x-jira-webhook-secret']),
+        hasQuerySecret: Boolean(querySecret),
+      });
       return res.status(401).json({ error: 'Unauthorized' });
     }
   }
 
   const { webhookEvent, issue, changelog, user } = req.body ?? {};
-  if (!issue) return res.status(200).json({ ok: true });
+  console.log('[jira-webhook] request received', {
+    webhookEvent,
+    issueKey: issue?.key,
+    bodyKeys: Object.keys(req.body ?? {}),
+  });
+
+  if (!issue) {
+    console.warn('[jira-webhook] ignored request without issue payload', {
+      webhookEvent,
+      bodyKeys: Object.keys(req.body ?? {}),
+    });
+    return res.status(200).json({ ok: true, ignored: 'missing_issue' });
+  }
 
   const fields = issue.fields ?? {};
+  if (!process.env.JIRA_BASE_URL) {
+    console.error('[jira-webhook] missing JIRA_BASE_URL');
+    return res.status(500).json({ error: 'JIRA_BASE_URL 환경변수가 없습니다' });
+  }
+
   const issueUrl = `${process.env.JIRA_BASE_URL}/browse/${issue.key}`;
 
   try {
     if (webhookEvent === 'jira:issue_created') {
       await sendDiscordEmbed(embedCreated(issue.key, fields, issueUrl));
+      console.log('[jira-webhook] sent issue created notification', { issueKey: issue.key });
     } else if (webhookEvent === 'jira:issue_updated') {
+      let sent = 0;
       for (const embed of embedsUpdated(issue.key, fields, issueUrl, changelog, user)) {
         await sendDiscordEmbed(embed);
+        sent += 1;
       }
+      console.log('[jira-webhook] processed issue updated notification', { issueKey: issue.key, sent });
+    } else if (webhookEvent === 'jira:issue_deleted') {
+      await sendDiscordEmbed(embedDeleted(issue.key, fields, user));
+      console.log('[jira-webhook] sent issue deleted notification', { issueKey: issue.key });
+    } else {
+      console.warn('[jira-webhook] ignored unsupported event', { webhookEvent, issueKey: issue.key });
     }
   } catch (err) {
-    console.error(err);
+    console.error('[jira-webhook] failed to process request', {
+      webhookEvent,
+      issueKey: issue.key,
+      error: err.message,
+    });
     return res.status(500).json({ error: err.message });
   }
 
@@ -61,6 +108,21 @@ function embedCreated(key, fields, url) {
       fields.startdate   && { name: '시작일', value: fields.startdate,  inline: true },
     ].filter(Boolean),
     footer: { text: `생성자: ${fields.reporter?.displayName ?? '-'}` },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function embedDeleted(key, fields, user) {
+  return {
+    color: COLOR.RED,
+    title: `[${key}] ${fields.summary ?? '(제목 없음)'}`,
+    description: '이슈가 삭제되었습니다',
+    fields: [
+      fields.status?.name   && { name: '삭제 전 상태', value: fields.status.name, inline: true },
+      fields.priority?.name && { name: '우선순위', value: fields.priority.name, inline: true },
+      fields.assignee       && { name: '담당자', value: fields.assignee.displayName ?? '미배정', inline: true },
+    ].filter(Boolean),
+    footer: { text: `삭제자: ${user?.displayName ?? '-'}` },
     timestamp: new Date().toISOString(),
   };
 }

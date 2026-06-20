@@ -20,6 +20,7 @@ Jira 이벤트 발생
 | 상태 변경 | 노란색 | `할 일 → 진행 중` |
 | 일정 변경 | 주황색 | `2026-01-01 → 2026-01-15` |
 | 내용 변경 | 회색 | 제목·설명·담당자 변경 |
+| 이슈 삭제 | 빨간색 | 삭제된 이슈 |
 | 오늘 시작일 | 초록색 | 매일 아침 D-Day 알림 |
 | 오늘 마감일 | 빨간색 | 매일 아침 D-Day 알림 |
 
@@ -78,9 +79,25 @@ git push
    | 항목 | 값 |
    |------|-----|
    | URL | `https://YOUR_APP.vercel.app/api/jira-webhook` |
-   | 이벤트 | ✅ Issue created &nbsp; ✅ Issue updated |
+   | 이벤트 | ✅ Issue created &nbsp; ✅ Issue updated &nbsp; ✅ Issue deleted |
 
 4. **저장**
+
+`JIRA_WEBHOOK_SECRET`을 Vercel 환경변수에 설정했다면 Jira 웹훅 URL에도 같은 값을 붙여야 합니다.
+
+```text
+https://YOUR_APP.vercel.app/api/jira-webhook?secret=YOUR_SECRET
+```
+
+## 웹훅이 안 올 때 확인 순서
+
+1. 브라우저에서 `https://YOUR_APP.vercel.app/api/jira-webhook`을 열어 `ok: true`가 나오는지 확인합니다.
+2. 응답의 `hasDiscordWebhook`, `hasJiraBaseUrl`이 둘 다 `true`인지 확인합니다.
+3. `requiresSecret: true`라면 Jira 웹훅 URL에 `?secret=...`이 붙어 있는지 확인합니다.
+4. Vercel → Project → Logs에서 `[jira-webhook]` 로그를 확인합니다.
+   - 로그가 전혀 없으면 Jira의 웹훅 URL 또는 이벤트 선택 문제입니다.
+   - `unauthorized request`가 보이면 secret 설정 문제입니다.
+   - `failed to process request`가 보이면 Discord 또는 환경변수 문제입니다.
 
 ---
 
