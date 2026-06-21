@@ -1,6 +1,6 @@
 import { sendDiscordEmbed, COLOR } from '../lib/discord.js';
 
-// vercel.json에서 매일 UTC 23:00 (KST 08:00) 자동 실행
+// vercel.json에서 매일 UTC 23:20 (KST 08:20) 자동 실행
 export default async function handler(req, res) {
   if (!process.env.CRON_SECRET) {
     console.error('[cron-check-dates] missing CRON_SECRET');
@@ -63,7 +63,7 @@ async function queryJira(jql) {
     fields: 'summary,status,assignee,priority,duedate,startdate',
   });
 
-  const res = await fetch(`${JIRA_BASE_URL}/rest/api/3/search?${qs}`, {
+  const res = await fetch(`${JIRA_BASE_URL}/rest/api/3/search/jql?${qs}`, {
     headers: { Authorization: `Basic ${cred}`, Accept: 'application/json' },
   });
 
