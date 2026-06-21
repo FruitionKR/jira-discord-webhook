@@ -1,8 +1,16 @@
 import { sendDiscordEmbed, COLOR } from '../lib/discord.js';
 
-// vercel.json에서 매일 UTC 15:00 (KST 00:00) 자동 실행
+// vercel.json에서 매일 UTC 23:00 (KST 08:00) 자동 실행
 export default async function handler(req, res) {
+  if (!process.env.CRON_SECRET) {
+    console.error('[cron-check-dates] missing CRON_SECRET');
+    return res.status(500).json({ error: 'CRON_SECRET 환경변수가 필요합니다' });
+  }
+
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+    console.warn('[cron-check-dates] unauthorized request', {
+      hasAuthorization: Boolean(req.headers.authorization),
+    });
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -21,9 +29,18 @@ export default async function handler(req, res) {
       ...dueIssues.map(issue  => sendDiscordEmbed(dateEmbed(issue, 'due', startKeys.has(issue.key)))),
     ]);
 
+    console.log('[cron-check-dates] sent date notifications', {
+      today,
+      startCount: startIssues.length,
+      dueCount: dueIssues.length,
+    });
+
     return res.status(200).json({ ok: true, today, startCount: startIssues.length, dueCount: dueIssues.length });
   } catch (err) {
-    console.error(err);
+    console.error('[cron-check-dates] failed to send date notifications', {
+      today,
+      error: err.message,
+    });
     return res.status(500).json({ error: err.message });
   }
 }
